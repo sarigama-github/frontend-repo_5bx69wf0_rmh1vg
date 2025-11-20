@@ -2,16 +2,238 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flames App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Customer Finder</title>
     <link rel="icon" type="image/x-icon" href="favicon.svg">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Funky fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-mono/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+      :root {
+        --bg1: #0f1020;
+        --bg2: #1a0b2e;
+        --accent: #7c3aed;
+        --accent2: #22d3ee;
+        --card: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.12);
+      }
+      body {
+        font-family: 'Manrope', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
+        background: radial-gradient(1200px 800px at 10% 10%, rgba(124,58,237,0.15), transparent 60%),
+                    radial-gradient(1000px 700px at 90% 20%, rgba(34,211,238,0.12), transparent 60%),
+                    linear-gradient(135deg, var(--bg1), var(--bg2));
+        color: #e8e8ff;
+      }
+      .glass {
+        background: var(--card);
+        border: 1px solid var(--border);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
+        border-radius: 18px;
+      }
+      .hero-title {
+        letter-spacing: 0.2px;
+        text-shadow: 0 6px 30px rgba(124,58,237,0.35);
+      }
+      .search-wrap {
+        max-width: 760px;
+      }
+      .search-input {
+        border: 0;
+        background: rgba(255,255,255,0.06);
+        color: #fff;
+        padding: 1rem 1.25rem 1rem 3rem;
+        outline: none;
+      }
+      .search-input:focus {
+        box-shadow: 0 0 0 0.25rem rgba(124,58,237,0.35);
+      }
+      .search-icon {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #c6b7ff;
+      }
+      .badge-funky {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #0b0b14;
+        font-weight: 700;
+      }
+      .result-item {
+        transition: transform .15s ease, background .2s ease;
+      }
+      .result-item:hover {
+        transform: translateY(-2px);
+        background: rgba(255,255,255,0.08);
+      }
+      .muted { color: #bdb7d6; }
+      .dim { color: #8f88ad; }
+    </style>
   </head>
-  <body>
+  <body class="d-flex align-items-center justify-content-center p-3">
+    <div class="container py-5">
+      <div class="text-center mb-4">
+        <span class="badge rounded-pill badge-funky mb-3 px-3 py-2">
+          <i class="bi bi-stars me-1"></i> Customer Finder
+        </span>
+        <h1 class="display-5 fw-bold hero-title">Find anyone in seconds</h1>
+        <p class="lead dim">Type at least three characters — name, phone, address or postcode — and we’ll show matches instantly.</p>
+      </div>
+
+      <div class="mx-auto search-wrap">
+        <div class="position-relative glass p-2">
+          <i class="bi bi-search search-icon"></i>
+          <input id="searchInput" type="text" class="form-control form-control-lg search-input" placeholder="Search by name, phone, address, postcode..." autocomplete="off" />
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <small class="dim">Minimum 3 characters to start searching</small>
+          <button id="seedBtn" class="btn btn-sm btn-outline-light"><i class="bi bi-magic me-1"></i>Load sample data</button>
+        </div>
+
+        <div id="results" class="mt-4"></div>
+      </div>
+    </div>
+
+    <!-- Make backend URL available globally from Vite env -->
+    <script type="module">
+      window.BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    </script>
+
+    <!-- jQuery + Bootstrap Bundle JS -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      (function() {
+        const $input = $('#searchInput');
+        const $results = $('#results');
+        const minLen = 3;
+        let lastQuery = '';
+        let controller = null;
+
+        function renderSkeleton() {
+          return `
+            <div class="glass p-3">
+              <div class="d-flex align-items-center gap-2">
+                <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                <span class="muted">Searching...</span>
+              </div>
+            </div>`;
+        }
+
+        function renderEmpty(message) {
+          return `
+            <div class="glass p-4 text-center">
+              <i class="bi bi-search fs-3 d-block mb-2" style="color:#bdb7d6"></i>
+              <div class="muted">${message}</div>
+            </div>`;
+        }
+
+        function highlight(text, q) {
+          if (!q) return text;
+          try {
+            const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return text.replace(new RegExp(escaped, 'ig'), m => `<mark class="px-1 py-0 rounded" style="background:rgba(124,58,237,0.35)">${m}</mark>`);
+          } catch (_) {
+            return text;
+          }
+        }
+
+        function renderResults(items, q) {
+          if (!items.length) {
+            return renderEmpty('No matches found.');
+          }
+          const rows = items.map(it => {
+            const name = `${it.first_name ?? ''} ${it.last_name ?? ''}`.trim();
+            const phone = it.phone ? `<span class="me-3"><i class="bi bi-telephone me-1"></i>${highlight(it.phone, q)}</span>` : '';
+            const address = it.address ? `<div class="small dim"><i class="bi bi-geo-alt me-1"></i>${highlight(it.address, q)}</div>` : '';
+            const postcode = it.postcode ? `<span class="badge bg-secondary-subtle text-light border border-1 border-light-subtle">${highlight(it.postcode, q)}</span>` : '';
+            return `
+              <div class="glass p-3 mb-2 result-item">
+                <div class="d-flex flex-wrap align-items-center justify-content-between">
+                  <div class="me-3">
+                    <div class="fw-bold">${highlight(name, q)}</div>
+                    ${address}
+                  </div>
+                  <div class="text-end">
+                    <div class="small">${phone}</div>
+                    ${postcode}
+                  </div>
+                </div>
+              </div>`;
+          }).join('');
+          return rows;
+        }
+
+        function debounce(fn, wait) {
+          let t;
+          return function(...args) {
+            clearTimeout(t);
+            t = setTimeout(() => fn.apply(this, args), wait);
+          };
+        }
+
+        async function seedSample() {
+          try {
+            const res = await fetch(`${window.BACKEND_URL}/api/customers/seed`, { method: 'POST' });
+            const data = await res.json();
+            const note = document.createElement('div');
+            note.className = 'alert alert-success glass mt-3';
+            note.innerHTML = `<i class="bi bi-check2-circle me-1"></i>Added ${data.inserted} sample customers (total: ${data.total}).`;
+            document.querySelector('.search-wrap').appendChild(note);
+            setTimeout(() => note.remove(), 3000);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+
+        async function performSearch(q) {
+          if (controller) controller.abort();
+          controller = new AbortController();
+          $results.html(renderSkeleton());
+          try {
+            const url = `${window.BACKEND_URL}/api/customers/search?q=${encodeURIComponent(q)}`;
+            const res = await fetch(url, { signal: controller.signal });
+            if (!res.ok) throw new Error('Search failed');
+            const data = await res.json();
+            $results.html(renderResults(data, q));
+          } catch (err) {
+            if (err.name === 'AbortError') return;
+            $results.html(renderEmpty('Something went wrong. Please try again.'));
+          }
+        }
+
+        const onInput = debounce(function() {
+          const q = $input.val().trim();
+          if (q.length < minLen) {
+            $results.html(renderEmpty('Start typing to search your customers.'));
+            lastQuery = '';
+            return;
+          }
+          if (q === lastQuery) return;
+          lastQuery = q;
+          performSearch(q);
+        }, 250);
+
+        $input.on('input', onInput);
+        $('#seedBtn').on('click', seedSample);
+        // Initial state
+        $results.html(renderEmpty('Start typing to search your customers.'));
+      })();
+    </script>
+
+    <!-- React mount (unused for this page, but kept for environment compatibility) -->
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
